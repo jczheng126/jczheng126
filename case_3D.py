@@ -209,16 +209,18 @@ class PhysicsInformedNN:
         u_yy = tf.gradients(u_y, y)[0]
         u_xx = tf.gradients(u_x, x)[0]
         u_zz = tf.gradients(u_z, z)[0]
-        f_1 = (u_yy + u_xx + u_zz) - self.df1(x, y, z)
+        f_1 = u_yy + u_xx + u_zz - self.df1(x, y, z)
+
         #界面外部
         u_2 = self.net_u(x2, y2, z2) + self.net_u_2(x2, y2, z2)
-        u_y2 = tf.gradients(u_2, y2)[0]
-        u_yy2 = tf.gradients(u_y2, y2)[0]
         u_x2 = tf.gradients(u_2, x2)[0]
-        u_xx2 = tf.gradients(u_x2, x2)[0]
+        u_y2 = tf.gradients(u_2, y2)[0]
         u_z2 = tf.gradients(u_2, z2)[0]
+
+        u_yy2 = tf.gradients(u_y2, y2)[0]
+        u_xx2 = tf.gradients(u_x2, x2)[0]
         u_zz2 = tf.gradients(u_z2, z2)[0]
-        f_2 = (u_yy2 + u_xx2 + u_zz2) - self.df2(x2, y2, z2)
+        f_2 = u_yy2 + u_xx2 + u_zz2 - self.df2(x2, y2, z2)
         return f_1, f_2
 
     def net_dt(self, x, y, z):
@@ -231,16 +233,16 @@ class PhysicsInformedNN:
         uy1 = tf.gradients(u_1, y)[0] * self.b(x, y, z)
         ux1 = tf.gradients(u_1, x)[0] * self.b(x, y, z)
         uz1 = tf.gradients(u_1, z)[0] * self.b(x, y, z)
-        uy2 = tf.gradients(u_2, y)[0] * self.b(x, y, z)
-        ux2 = tf.gradients(u_2, x)[0] * self.b(x, y, z)
-        uz2 = tf.gradients(u_2, z)[0] * self.b(x, y, z)
+        uy2 = tf.gradients(u_2, y)[0]
+        ux2 = tf.gradients(u_2, x)[0]
+        uz2 = tf.gradients(u_2, z)[0]
 
         u_y1 = tf.gradients(u1, y)[0] * self.b(x, y, z)
         u_x1 = tf.gradients(u1, x)[0] * self.b(x, y, z)
         u_z1 = tf.gradients(u1, z)[0] * self.b(x, y, z)
-        u_y2 = tf.gradients(u2, y)[0] * self.b(x, y, z)
-        u_x2 = tf.gradients(u2, x)[0] * self.b(x, y, z)
-        u_z2 = tf.gradients(u2, z)[0] * self.b(x, y, z)
+        u_y2 = tf.gradients(u2, y)[0]
+        u_x2 = tf.gradients(u2, x)[0]
+        u_z2 = tf.gradients(u2, z)[0]
 
         r = 2 * x ** 2 + 3 * y ** 2 + 6 * z ** 2 - 1.69
 
