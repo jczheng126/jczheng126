@@ -5,7 +5,7 @@ from pyDOE import lhs
 import time
 class PhysicsInformedNN:
     # Initialize the class
-    def __init__(self, X_b_train, u_train, x1_train, x2_train, xt, layerM, layers1, layers2, X_test, u_test):
+    def __init__(self, X_b_train, u_train, x1_train, x2_train, xt, layerM, layers1, layers2):
         #边界点及其数据
         self.x_b = X_b_train[:, 0:1]
         self.y_b = X_b_train[:, 1:2]
@@ -23,10 +23,6 @@ class PhysicsInformedNN:
         self.layers_M = layerM
         self.layers_1 = layers1
         self.layers_2 = layers2
-
-        self.x_te = X_test[:, 0:1]
-        self.y_te = X_test[:, 1:2]
-        self.u_te = u_test
 
         # Initialize NNs
         self.weights_M, self.biases_M = self.initialize_NN(layerM)
@@ -47,13 +43,6 @@ class PhysicsInformedNN:
         self.y2 = tf.placeholder(tf.float32, shape=[None, self.y_f_2.shape[1]])
         self.xt = tf.placeholder(tf.float32, shape=[None, self.x_t.shape[1]])
         self.yt = tf.placeholder(tf.float32, shape=[None, self.y_t.shape[1]])
-        self.xte = tf.placeholder(tf.float32, shape=[None, self.x_te.shape[1]])
-        self.yte = tf.placeholder(tf.float32, shape=[None, self.y_te.shape[1]])
-        self.ute = tf.placeholder(tf.float32, shape=[None, self.u_te.shape[1]])
-
-        self.ET = tf.linalg.norm(
-            (self.u_pred(self.xte, self.yte)) - self.ute) / tf.linalg.norm(
-            tf.abs(self.ute))
 
         self.pred = self.u_pred(self.xt, self.yt)
         self.u_b1 = self.net_u(self.xt, self.yt) + self.net_u_1(self.xt, self.yt)
@@ -97,6 +86,11 @@ class PhysicsInformedNN:
         out_dim = size[1]
         xavier_stddev = np.sqrt(2 / (in_dim + out_dim))
         return tf.Variable(tf.truncated_normal([in_dim, out_dim], stddev=xavier_stddev), dtype=tf.float32)
+
+    def T_phi(self, x, y, weights, biases):
+        H = tf.sqrt(x ** 2 + y ** 2) - 0.3
+        H = tf.cos(tf.add(tf.matmul(H, weights[0]), biases[0]))
+        return H
 
 
     def neural_net_1(self, x, y, weights, biases):
@@ -197,13 +191,10 @@ class PhysicsInformedNN:
     def net_dt(self, x, y):
         e1 = 2*x**2 + 3*y**2
         e2 = tf.sin(x +y) + tf.cos(x+y) + 1
-        r = tf.sqrt(x**2 + y**2) - 0.3
+        r = tf.sqrt(x**2 + y**2)
 
-        nx = tf.gradients(r, x)[0]  # x方向法向量分量
-        ny = tf.gradients(r, y)[0]  # y方向法向量分量
-
-        dx = nx / tf.sqrt(nx ** 2 + ny ** 2)  # x方向法向量分量
-        dy = ny / tf.sqrt(nx ** 2 + ny ** 2)  # y方向法向量分量
+        dx = x / r  # x方向法向量分量
+        dy = y / r  # y方向法向量分量
 
         u1 = self.net_u_1(x, y)
         u2 = self.net_u_2(x, y)
@@ -246,20 +237,20 @@ class PhysicsInformedNN:
     def train(self,nIter, tresh):
 
         tf_dict = {self.xb: self.x_b, self.yb: self.y_b, self.ub: self.u_b, self.x1: self.x_f_1, self.y1: self.y_f_1,
-                   self.x2: self.x_f_2, self.y2: self.y_f_2, self.xt: self.x_t, self.yt: self.y_t, self.xte: self.x_te, self.yte: self.y_te, self.ute: self.u_te}
+                   self.x2: self.x_f_2, self.y2: self.y_f_2, self.xt: self.x_t, self.yt: self.y_t}
 
         for it in range(nIter):
             self.sess.run(self.train_op_Adam, tf_dict)
 
             if it % 100 == 0:
                 loss_value = self.sess.run(self.loss, tf_dict)
-                UT = self.sess.run(self.ET, tf_dict)
-                if UT < tresh:
+
+                if loss_value < tresh:
                     print('It: %d, Loss: %.3e' % (it, loss_value))
                     break
 
             if it % 100 == 0:
-                print(f"Step {it}, Relative error: {UT}, loss_value: {loss_value}")
+                print(f"Step {it}, loss_value: {loss_value}")
                 print()
 
     def predict(self, X1):
@@ -269,7 +260,7 @@ class PhysicsInformedNN:
 if __name__ == "__main__":
     LR = 0.001
     Opt_Niter = 50000 + 1
-    Opt_tresh = 1e-5
+    Opt_tresh = 1e-7
     N = 32
     layerM = [2] + [20] * 3 + [1]
     layers1 = [1] + [N] + [2] + [N] + [2] + [N] + [2] + [N] + [N] * 2 + [1]
@@ -345,13 +336,13 @@ if __name__ == "__main__":
     y = y(xbtest)[:, None]
     xt = np.concatenate([x, y], axis=1)
 
-    model = PhysicsInformedNN(X_b_train, u_train, x1_train, x2_train, xt, layerM, layers1, layers2, X_test, u_test)
+    model = PhysicsInformedNN(X_b_train, u_train, x1_train, x2_train, xt, layerM, layers1, layers2)
     start_time = time.time()
     model.train(Opt_Niter, Opt_tresh)
     elapsed = time.time() - start_time
     print('Training time: %.4f' % (elapsed))
     u_pred = model.predict(X_test)
-    print(np.linalg.norm(u_test - u_pred) / (np.linalg.norm(u_test)))
+    print('Relative error:', np.linalg.norm(u_test - u_pred) / (np.linalg.norm(u_test)))
     ######################################################################
     ############################# Plotting ###############################
     ######################################################################
