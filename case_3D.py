@@ -27,11 +27,6 @@ class PhysicsInformedNN:
         self.layers_1 = layers1
         self.layers_2 = layers2
 
-        self.x_te = X_test[:, 0:1]
-        self.y_te = X_test[:, 1:2]
-        self.z_te = X_test[:, 2:3]
-        self.u_te = u_test
-
         # Initialize NNs
         self.weights_M, self.biases_M = self.initialize_NN(layerM)
         self.weights_1, self.biases_1 = self.initialize_NN(layers1)
@@ -56,16 +51,8 @@ class PhysicsInformedNN:
         self.yt = tf.placeholder(tf.float32, shape=[None, self.y_t.shape[1]])
         self.zt = tf.placeholder(tf.float32, shape=[None, self.z_t.shape[1]])
 
-        self.xte = tf.placeholder(tf.float32, shape=[None, self.x_te.shape[1]])
-        self.yte = tf.placeholder(tf.float32, shape=[None, self.y_te.shape[1]])
-        self.zte = tf.placeholder(tf.float32, shape=[None, self.z_te.shape[1]])
-        self.ute = tf.placeholder(tf.float32, shape=[None, self.u_te.shape[1]])
-        self.ET = tf.linalg.norm(
-            (self.u_pred(self.xte, self.yte, self.zte)) - self.ute) / tf.linalg.norm(
-            tf.abs(self.ute))
 
         self.pred = self.u_pred(self.xt, self.yt, self.zt)
-
         self.u_b2 = self.net_u(self.xb, self.yb, self.zb) + self.net_u_2(self.xb, self.yb, self.zb)
         self.f_1, self.f_2 = self.net_f(self.x1, self.y1, self.z1, self.x2, self.y2, self.z2)
         self.u_t, self.u_dt = self.net_dt(self.xt, self.yt, self.zt)
@@ -104,7 +91,7 @@ class PhysicsInformedNN:
     def neural_net_1(self, x, y, z, weights, biases):
         X = tf.concat([x, y, z], axis=1)
         H = X
-        R = tf.add(tf.matmul(H, weights[2]), biases[2])  # The linear expansion layer is used for dimension matching.
+        R = tf.add(tf.matmul(H, weights[2]), biases[2])
 
         H1 = 2*x**2 + 3*y**2 + 6*z**2 - 1.69
         H1 = tf.nn.softmax(tf.add(tf.matmul(H1, weights[0]), biases[0]))
@@ -114,7 +101,6 @@ class PhysicsInformedNN:
         V = tf.add(tf.matmul(H, weights[6]), biases[6])
         A = tf.multiply(tf.cos(tf.multiply(Q, W)), V)
         H = tf.cos(tf.add(tf.matmul(A, weights[7]), biases[7]))
-
         H = tf.multiply((1-H), H1) + tf.multiply(H, R)
 
         W = weights[-1]
@@ -244,7 +230,7 @@ class PhysicsInformedNN:
         u_x2 = tf.gradients(u2, x)[0]
         u_z2 = tf.gradients(u2, z)[0]
 
-        r = 2 * x ** 2 + 3 * y ** 2 + 6 * z ** 2 - 1.69
+        r = 2 * x ** 2 + 3 * y ** 2 + 6 * z ** 2
 
         nx = tf.gradients(r, x)[0]  # x方向法向量分量
         ny = tf.gradients(r, y)[0]  # y方向法向量分量
@@ -271,21 +257,19 @@ class PhysicsInformedNN:
     def train(self,nIter, tresh):
 
         tf_dict = {self.xb: self.x_b, self.yb: self.y_b, self.zb: self.z_b, self.ub: self.u_b, self.x1: self.x_f_1, self.y1: self.y_f_1, self.z1: self.z_f_1,
-                   self.x2: self.x_f_2, self.y2: self.y_f_2, self.z2: self.z_f_2, self.xt: self.x_t, self.yt: self.y_t, self.zt: self.z_t,
-                   self.xte: self.x_te, self.yte: self.y_te, self.zte: self.z_te, self.ute: self.u_te}
+                   self.x2: self.x_f_2, self.y2: self.y_f_2, self.z2: self.z_f_2, self.xt: self.x_t, self.yt: self.y_t, self.zt: self.z_t}
 
         for it in range(nIter):
             self.sess.run(self.train_op_Adam, tf_dict)
 
             if it % 100 == 0:
                 loss_value = self.sess.run(self.loss, tf_dict)
-                UT = self.sess.run(self.ET, tf_dict)
                 if loss_value < tresh:
                     print('It: %d, Loss: %.3e' % (it, loss_value))
                     break
 
             if it % 100 == 0:
-                print(f"Step {it}, Relative error: {UT}, loss_value: {loss_value}")
+                print(f"Step {it}, loss_value: {loss_value}")
                 print()
 
     def predict(self, X1):
@@ -295,7 +279,7 @@ class PhysicsInformedNN:
 
 if __name__ == "__main__":
     LR = 0.001
-    Opt_Niter = 100000 + 1
+    Opt_Niter = 50000 + 1
     Opt_tresh = 2e-32
     N = 32
     layerM = [3] + [20] * 3 + [1]
@@ -400,55 +384,12 @@ if __name__ == "__main__":
     elapsed = time.time() - start_time
     print('Training time: %.4f' % (elapsed))
     u_pred = model.predict(X_test)
-    print(np.linalg.norm(u_pred - u_test)/(np.linalg.norm(u_test)))
+    RE = np.linalg.norm(u_test - u_pred) / (np.linalg.norm(u_test))
+    print('Relative error:', RE)
+    # np.savetxt("3D_ER", ER)
+
 
     ######################################################################
     ############################# Plotting ###############################
     ######################################################################
-
-    # fig, ax = plt.subplots()
-    # data = np.reshape(abs(u_pred - u_test), (201, 201))
-    # plt.xticks(np.arange(0, 201, 50), np.arange(-1, 1 + delta_test, 0.5))
-    # plt.xlabel('$x$', fontsize=15)
-    # # plt.axvline(x=100, linewidth=1,color='w', ls='-')
-    # t = np.arange(-1, 1 + delta_test, 0.5)
-    # t = np.flipud(t)
-    # plt.yticks(np.arange(0, 201, 50), t)
-    # plt.ylabel('$y$', fontsize=15)
-    # plt.imshow(data, cmap=plt.cm.jet)
-    # plt.colorbar()  # 显示颜色条
-    # plt.title('point-wise error', fontsize=25, color='#0033cc')
-    # plt.show()
-
-    # fig, ax = plt.subplots()
-    # data = np.reshape(u_pred, (201, 201))
-    # plt.xticks(np.arange(0, 201, 50), np.arange(-1, 1 + delta_test, 0.5))
-    # plt.xlabel('$x$', fontsize=15)
-    # # plt.axvline(x=100, linewidth=1,color='w', ls='-')
-    # t = np.arange(-1, 1 + delta_test, 0.5)
-    # t = np.flipud(t)
-    # plt.yticks(np.arange(0, 201, 50), t)
-    # plt.ylabel('$y$', fontsize=15)
-    # plt.imshow(data, cmap=plt.cm.jet)
-    # plt.colorbar()  # 显示颜色条
-    # plt.title('Prediction', fontsize=25, color='#0033cc')
-    # # plt.savefig('2DResults/error.pdf')
-    #
-    #
-    # fig, ax = plt.subplots()
-    # data = np.reshape(u_test, (201, 201))
-    # plt.xticks(np.arange(0, 201, 50), np.arange(-1, 1 + delta_test, 0.5))
-    # plt.xlabel('$x$', fontsize=15)
-    # # plt.axvline(x=100, linewidth=1,color='w', ls='-')
-    # t = np.arange(-1, 1 + delta_test, 0.5)
-    # t = np.flipud(t)
-    # plt.yticks(np.arange(0, 201, 50), t)
-    # plt.ylabel('$y$', fontsize=15)
-    # plt.imshow(data, cmap=plt.cm.jet)
-    # plt.colorbar()  # 显示颜色条
-    # plt.title('EXACT', fontsize=25, color='#0033cc')
-    # # plt.savefig('2DResults/error.pdf')
-    # plt.show()
-
-
 
